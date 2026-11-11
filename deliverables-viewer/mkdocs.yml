@@ -1,0 +1,40 @@
+site_name: runNshop 산출물
+docs_dir: ..
+site_dir: .site
+use_directory_urls: false
+theme:
+  name: material
+  language: ko
+  features:
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - toc.follow
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+    - scheme: slate
+      primary: indigo
+hooks:
+  - hooks.py
+extra_css:
+  - assets/extra.css
+exclude_docs: |
+  weekly-report/*.pptx
+  .git/**
+  .kiro/**
+  deliverables-viewer/**
+plugins:
+  - search
+markdown_extensions:
+  - tables
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - plantuml_markdown:
+      plantuml_cmd: python3 plantuml-wrapper.py
+      format: svg
+      cachedir: .plantuml-cache

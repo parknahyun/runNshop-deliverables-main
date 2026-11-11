@@ -1,0 +1,3 @@
+[submodule "reference/.ai-methodology"]
+	path = reference/.ai-methodology
+	url = https://github.com/3top-fepest/ai-methodology.git

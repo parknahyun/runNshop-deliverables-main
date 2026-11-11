@@ -1,0 +1,137 @@
+flowchart TD
+    %% ── 스타일 정의 ──────────────────────────────
+    classDef order   fill:#FAECE7,stroke:#993C1D,color:#712B13
+    classDef catalog fill:#E1F5EE,stroke:#0F6E56,color:#085041
+    classDef member  fill:#EEEDFE,stroke:#534AB7,color:#3C3489
+    classDef payment fill:#E6F1FB,stroke:#185FA5,color:#0C447C
+    classDef promo   fill:#FAEEDA,stroke:#854F0B,color:#633806
+    classDef settle  fill:#EAF3DE,stroke:#3B6D11,color:#27500A
+    classDef vendor  fill:#E1F5EE,stroke:#0F6E56,color:#085041
+    classDef comm    fill:#FBEAF0,stroke:#993556,color:#72243E
+    classDef infra   fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+
+    %% ── 노드 정의 ────────────────────────────────
+    ORDER["🛒 Order\n주문·배송·클레임\n오케스트레이터"]:::order
+    CATALOG["📦 Catalog\n상품·SKU·재고"]:::catalog
+    MEMBER["👤 Member\n회원·포인트·쿠폰"]:::member
+    PAYMENT["💳 Payment\n결제·환불·보상"]:::payment
+    PROMO["🎁 Promotion\n쿠폰·행사가·할인"]:::promo
+    SETTLE["💰 Settlement\n정산·지급"]:::settle
+    VENDOR["🏪 Vendor\n입점사·계약·등급"]:::vendor
+    COMM["💬 Community\n리뷰·QnA·크루"]:::comm
+    NOTIF["🔔 Notification\n알림·채널·배치"]:::infra
+    SEARCH["🔍 Search\n통합검색·인덱스"]:::infra
+    CONFIG["⚙️ Config\n권한·코드·공지"]:::infra
+    AUDIT["📋 Audit\n로그·감사·Trace"]:::infra
+
+    %% ── 사전 확인 (동기 API) ──────────────────────
+    ORDER -->|"① 재고 존재 확인 (동기)"| CATALOG
+    ORDER -->|"② 쿠폰 조건 확인 (동기)"| PROMO
+    ORDER -->|"③ 쿠폰보유·포인트잔액 (동기)"| MEMBER
+
+    %% ── 장바구니 머지 유효성 검사 ────────────────
+    ORDER -->|"머지후 재고확인 (동기)"| CATALOG
+    ORDER -->|"머지후 행사유효성 (동기)"| PROMO
+
+    %% ── 주문 생성 후 비동기 처리 ──────────────────
+    ORDER -->|"④ 재고선점요청 (비동기)"| CATALOG
+    CATALOG -->|"재고선점완료/실패"| ORDER
+
+    ORDER -->|"⑤ 쿠폰사용요청 (비동기)"| MEMBER
+    ORDER -->|"⑤ 포인트사용요청 (비동기)"| MEMBER
+    MEMBER -->|"사용완료"| ORDER
+
+    ORDER -->|"⑥ 결제요청 (비동기)"| PAYMENT
+    PAYMENT -->|"결제완료/실패"| ORDER
+    PAYMENT -->|"FDS 이상탐지 (동기)"| PAYMENT
+
+    %% ── 보상 트랜잭션 ─────────────────────────────
+    ORDER -->|"결제실패 시\n재고선점해제"| CATALOG
+    ORDER -->|"결제실패 시\n쿠폰·포인트복원"| MEMBER
+    ORDER -->|"결제실패 시\n결제취소"| PAYMENT
+
+    %% ── 주문 확정 후 ──────────────────────────────
+    ORDER -->|"⑦ 주문확정 알림"| NOTIF
+
+    %% ── 구매확정 (비동기) ──────────────────────────
+    ORDER -->|"⑧ 구매확정이벤트 (비동기)"| MEMBER
+    ORDER -->|"⑧ 구매확정이벤트 (비동기)"| SETTLE
+    ORDER -->|"⑧ 구매확정이벤트 (비동기)"| NOTIF
+
+    MEMBER -->|"포인트 적립"| MEMBER
+    SETTLE -->|"정산대상 등록"| SETTLE
+
+    %% ── 클레임 처리 ───────────────────────────────
+    ORDER -->|"⑨ 클레임접수 (취합배치)"| NOTIF
+    ORDER -->|"결제취소요청"| PAYMENT
+    PAYMENT -->|"결제취소완료"| ORDER
+    ORDER -->|"포인트·쿠폰복원요청"| MEMBER
+    ORDER -->|"재고복구요청"| CATALOG
+    ORDER -->|"반품·취소·교환완료"| SETTLE
+
+    %% ── 주문 통계 → Vendor ────────────────────────
+    ORDER -->|"⑩ 주문지표이벤트\n거래액·이행률·클레임율"| VENDOR
+
+    %% ── Order 배치 ────────────────────────────────
+    ORDER -->|"배치: TEMP 타임아웃 30분"| ORDER
+    ORDER -->|"배치: 구매확정 자동화 7일"| ORDER
+    ORDER -->|"배치: 클레임기간 만료 10일"| ORDER
+    ORDER -->|"배치: 출고기한 초과 1영업일"| NOTIF
+
+    %% ── Catalog 이벤트 ────────────────────────────
+    CATALOG -->|"상품승인이벤트 (취합배치)"| NOTIF
+    CATALOG -->|"상품승인이벤트"| SEARCH
+    CATALOG -->|"가격변경이벤트"| SEARCH
+    CATALOG -->|"품절이벤트"| SEARCH
+    CATALOG -->|"상품QnA요청"| COMM
+    CATALOG -->|"심사 권한확인 (동기)"| CONFIG
+    CATALOG -->|"입점사유효성 (동기)"| VENDOR
+    CATALOG -->|"상품정보변경이벤트\nupdated_at 갱신\n장바구니 유효성 기준"| ORDER
+
+    %% ── Member 이벤트 ─────────────────────────────
+    MEMBER -->|"등급변경이벤트"| NOTIF
+    MEMBER -->|"포인트소멸예고"| NOTIF
+    MEMBER -->|"수신거부 확인 (동기)"| NOTIF
+
+    %% ── Promotion 이벤트 ──────────────────────────
+    PROMO -->|"쿠폰발급이벤트"| MEMBER
+    PROMO -->|"행사수량소진이벤트"| SEARCH
+    PROMO -->|"기획전게시이벤트"| SEARCH
+    PROMO -->|"기획전게시이벤트"| NOTIF
+    PROMO -->|"행사가변경이벤트\nupdated_at 갱신\n장바구니 유효성 기준"| ORDER
+
+    %% ── Settlement 이벤트 ─────────────────────────
+    SETTLE -->|"정산확정이벤트 (취합배치)"| NOTIF
+    SETTLE -->|"정산지급완료이벤트"| NOTIF
+    SETTLE -->|"정산지급"| VENDOR
+
+    %% ── Vendor 이벤트 ─────────────────────────────
+    VENDOR -->|"입점심사결과 (취합배치)"| NOTIF
+    VENDOR -->|"계약만료예고"| NOTIF
+    VENDOR -->|"입점사정지이벤트"| CATALOG
+    VENDOR -->|"입점사퇴점이벤트"| CATALOG
+    VENDOR -->|"입점사퇴점이벤트"| SETTLE
+    VENDOR -->|"입점사퇴점이벤트"| NOTIF
+    VENDOR -->|"등급변경이벤트"| NOTIF
+
+    %% ── Community 이벤트 ──────────────────────────
+    COMM -->|"리뷰작성완료이벤트"| ORDER
+    COMM -->|"평점변경이벤트"| CATALOG
+    COMM -->|"활동지수이벤트"| MEMBER
+    COMM -->|"커뮤니티인덱스"| SEARCH
+    ORDER -->|"주문QnA요청"| COMM
+
+    %% ── Config 제공 ───────────────────────────────
+    CONFIG -->|"권한확인 API"| VENDOR
+    CONFIG -->|"권한확인 API"| ORDER
+
+    %% ── Notification 템플릿 ───────────────────────
+    NOTIF -->|"템플릿 내부관리"| NOTIF
+
+    %% ── Audit (전 도메인 로그) ────────────────────
+    ORDER -->|"감사로그"| AUDIT
+    CATALOG -->|"감사로그"| AUDIT
+    MEMBER -->|"감사로그"| AUDIT
+    PAYMENT -->|"감사로그"| AUDIT
+    SETTLE -->|"감사로그"| AUDIT
+    VENDOR -->|"감사로그"| AUDIT
